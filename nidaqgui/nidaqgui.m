@@ -58,6 +58,8 @@ handles.output = hObject;
 % Update handles structure
 guidata(hObject, handles);
 
+% Reset nidaq
+
 nidaq_config;
 global nicfg
 
@@ -132,6 +134,10 @@ end
 
 
 
+
+
+
+
 % --- Executes on button press in togglebutton1.
 function togglebutton1_Callback(hObject, eventdata, handles)
 % hObject    handle to togglebutton1 (see GCBO)
@@ -146,33 +152,60 @@ nicfg.active = get(hObject, 'Value');
 
 if nicfg.active
     disp('Starting...');
+    
     set(handles.TimeElapsedNumber, 'String', 'WAIT');
     drawnow();
+    
+    disp('Resetting nidaq...')
+    
+    if nicfg.useMLlibrary % Using MonkeyLogic DAQ library or not
+        daqtoolbox.daqreset;
+    else
+        daqreset;
+    end
     
     nicfg.MouseName = get(handles.MouseName, 'String'); % returns contents of Enter_ROI as a double
     nicfg.Run = str2double(get(handles.Runs, 'String')); % returns contents of Enter_ROI as a double
     % nicfg
     
-    if nicfg.ArduinoCOM > -1
+    % Reset arduino
+    if nicfg.ArduinoCOM > -1 && ~isfield(nicfg, 'arduino_serial')
         nicfg.arduino_data = [];
         nicfg.arduino_serial = arduinoOpen(nicfg.ArduinoCOM);
         arduinoReadQuad(nicfg.arduino_serial);
     end
+    
+    % Start nidaq
     if nicfg.NidaqChannels > 0
         nidaqpath = fullfile(nicfg.BasePath, sprintf('%s-%s-%03i-nidaq.mat', nicfg.MouseName, datestamp(), nicfg.Run));
-        nicfg.nidaq_session = startNidaq(nidaqpath, nicfg.NidaqFrequency, nicfg.NidaqChannels, nicfg.DigitalString, nicfg.NidaqDigitalChannels);
+        
+        if nicfg.useMLlibrary % Using MonkeyLogic DAQ library or not
+            nicfg.nidaq_session = startNidaq_ML(nicfg.NidaqFrequency,...
+                nicfg.NidaqChannels, nicfg.NidaqDevice);
+        else
+            nicfg.nidaq_session = startNidaq(nidaqpath,...
+                nicfg.NidaqFrequency, nicfg.NidaqChannels,...
+                nicfg.DigitalString, nicfg.NidaqDigitalChannels,...
+                nicfg.NidaqDevice);
+        end
     end
     
     tic;
     disp('Iterating');
-    % Use clock to grab system time, instead of CPU time. 6th entry is
-    % seconds
     tstart = clock;
     tnow = clock;
     tseconds = 0;
+    
+    timeconv = [0 0 86400 3600 60 1]'; % a vector to convert time to seconds
+    
+    
+    
+    
+    
+    
     while get(hObject, 'Value') == 1
-        if floor(tnow(6) - tstart(6)) > tseconds
-            tseconds = floor(tnow(6) - tstart(6));
+        if floor((tnow - tstart) * timeconv) > tseconds
+            tseconds = floor((tnow - tstart) * timeconv);
             elapsedmins = floor(tseconds/60.0);
             set(handles.TimeElapsedNumber, 'String', sprintf('%3i:%02i', elapsedmins, tseconds - elapsedmins*60));
         end
@@ -180,18 +213,23 @@ if nicfg.active
         drawnow();
         
         if nicfg.ArduinoCOM > -1 && toc > 1.0/nicfg.RunningFrequency
-            tic; % SZ moved tic up 4/12/2019 to ensure acurate cycle times
+            tic;
             nicfg.arduino_data = [nicfg.arduino_data arduinoReadQuad(nicfg.arduino_serial)];
         end
         
         tnow = clock;
-
     end
     
     disp('Saving...');
     
+    
+    
+    
+    
+    
     if nicfg.ArduinoCOM > -1
         fclose(nicfg.arduino_serial);
+        nicfg = rmfield(nicfg, 'arduino_serial');
         arduinopath = fullfile(nicfg.BasePath, sprintf('%s-%s-%03i-running.mat', nicfg.MouseName, datestamp(), nicfg.Run));
         position = nicfg.arduino_data;
         speed = runningSpeed(position, nicfg.RunningFrequency);
@@ -199,8 +237,59 @@ if nicfg.active
     end
     
     if isfield(nicfg, 'nidaq_session')
-        stopNidaq(nicfg.nidaq_session, nicfg.ChannelNames);
+        if nicfg.useMLlibrary % Using MonkeyLogic DAQ library or not
+            stopNidaq_ML(nicfg.nidaq_session, nidaqpath);
+        else
+            stopNidaq(nicfg.nidaq_session, nicfg.ChannelNames);
+        end
     end
+    
+    if sum(strcmpi(nicfg.serveradd(:,1), nicfg.MouseName(1:2))) > 0 % If has a registered owner
+        % Determine owner
+        serveradd = nicfg.serveradd{strcmpi(nicfg.serveradd(:,1),...
+            nicfg.MouseName(1:2)),2};
+        
+        disp(['Copying files to server address: ', serveradd]);
+
+        % Grab file names
+        [~,nidaqfn,~] = fileparts(nidaqpath);
+        [~,arduinofn,~] = fileparts(arduinopath);
+
+        % Make server file address
+        nidaqpath_server = fullfile(serveradd, nicfg.MouseName, ...
+                sprintf('%s_%s', datestamp(),nicfg.MouseName), [nidaqfn, '.mat']);
+        arduinopath_server = fullfile(serveradd, nicfg.MouseName, ...
+                sprintf('%s_%s', datestamp(),nicfg.MouseName), [arduinofn, '.mat']);
+
+        % Make mouse folder if needed
+        if exist(fullfile(serveradd, nicfg.MouseName), 'dir') ~= 7
+            mkdir(serveradd, nicfg.MouseName);
+        end
+
+        % Make day folder if needed
+        if exist(fullfile(serveradd, nicfg.MouseName, ...
+                sprintf('%s_%s', datestamp(),nicfg.MouseName)), 'dir') ~= 7
+            mkdir(fullfile(serveradd, nicfg.MouseName),...
+                sprintf('%s_%s', datestamp(),nicfg.MouseName));
+        end
+
+        % Copy nidaq file if does not exist
+        if ~exist(nidaqpath_server, 'file')
+            copyfile(nidaqpath, nidaqpath_server);
+        elseif input('Nidaq file already exist. Overwrite? (1 = Yes, 0 = No): ') == 1
+            copyfile(nidaqpath, nidaqpath_server);
+        end
+
+        % Copy arduino file if does not exist
+        if ~exist(arduinopath_server, 'file')
+            copyfile(arduinopath, arduinopath_server);
+        elseif input('Running file already exist. Overwrite? (1 = Yes, 0 = No): ') == 1
+            copyfile(arduinopath, arduinopath_server);
+        end
+    else
+        disp('Did not copy files to server');
+    end
+    
     disp('Finished');
     
     

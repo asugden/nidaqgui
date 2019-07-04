@@ -3,7 +3,7 @@ function open_serial = arduinoOpen(com)
 %   specified by the int com and returns the open connection. Close with
 %   fclose(open_serial)
 
-    open_serial = serial(sprintf('COM%i', com), 'Terminator', '', 'BaudRate', 115200); % May change to 9600 SZ
+    open_serial = serial(sprintf('COM%i', com), 'Terminator', '', 'BaudRate', 9600);
     fopen(open_serial);
 
 end

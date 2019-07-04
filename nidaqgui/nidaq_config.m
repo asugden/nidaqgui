@@ -1,8 +1,10 @@
 global nicfg
 
 % Set the up the nidaq recording
-nicfg.BasePath         = 'X:\PLEASE_CHANGE_ME\';       % Set the path in which data will be saved. Please use an absolute address.
-nicfg.ArduinoCOM       = 4;            % Set the COM port for the Arduino, < 0 means off
+nicfg.BasePath         = 'C:\Users\andermannlab\Documents\MATLAB\temp\';       % Set the path in which data will be saved
+nicfg.ArduinoCOM       = 7;            % Set the COM port for the Arduino, < 0 means off
+nicfg.NidaqDevice      = 'Dev1';        % Device name
+nicfg.useMLlibrary     = true;          % Use monkeylogic library
 nicfg.NidaqChannels    = 8;             % Set the number of NIDAQ channels to record (e.g. 6 means 0:5)
 nicfg.NidaqDigitalChannels = 1;         % Set the number of digital channels on Port0 to record, starting at Line0
 nicfg.NidaqFrequency   = 1000;          % Set the recording frequency for the nidaq
@@ -19,6 +21,13 @@ nicfg.ChannelNames     = { ...
                                         % Incremented by 1 relative to Nidaq board because Nidaq is 0-indexed
 nicfg.DigitalChannelNames = { ...
                          };
+nicfg.serveradd = {...
+    'SZ', '\\anastasia\data\photometry';...
+    'AL', '\\sweetness\Fiber Photometry';...
+    'KF', '\\sweetness\Fiber Photometry';...
+    'JR', '\\atlas\NIDAQ_run_LFP_etc\Ephys_Data';...
+    'MB', '\\atlas\NIDAQ_run_LFP_etc\Ephys_Data';...
+    'IS', '\\anastasia\data\photometry'};
 % =========================================================================
 % Not necessary to set
 nicfg.active           = false;
